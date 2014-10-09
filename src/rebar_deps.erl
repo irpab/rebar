@@ -53,10 +53,11 @@
 %% ===================================================================
 
 preprocess(Config, _) ->
+    Config0 = set_shared_deps_src_replace_dir(Config, get_shared_deps_src_replace_dir(Config, [])),
     %% Side effect to set deps_dir globally for all dependencies from
     %% top level down. Means the root deps_dir is honoured or the default
     %% used globally since it will be set on the first time through here
-    Config1 = set_shared_deps_dir(Config, get_shared_deps_dir(Config, [])),
+    Config1 = set_shared_deps_dir(Config0, get_shared_deps_dir(Config0, [])),
 
     %% Get the list of deps for the current working directory and identify those
     %% deps that are available/present.
@@ -316,6 +317,22 @@ dep_dirs(Deps) ->
 save_dep_dirs(Config, Deps) ->
     rebar_config:set_xconf(Config, ?MODULE, dep_dirs(Deps)).
 
+get_shared_deps_src_replace_dir(Config, Default) ->
+    rebar_config:get_xconf(Config, deps_src_replace, Default).
+
+set_shared_deps_src_replace_dir(Config, []) ->
+    LocalDepsSrcReplace = rebar_config:get_local(Config, deps_src_replace, []),
+    GlobalDepsSrcReplace = rebar_config:get_global(Config, deps_src_replace, LocalDepsSrcReplace),
+    DepsSrcReplace = case os:getenv("REBAR_DEPS_SRC_REPLACE") of
+        false ->
+            GlobalDepsSrcReplace;
+        Dir ->
+            Dir
+    end,
+    rebar_config:set_xconf(Config, deps_src_replace, DepsSrcReplace);
+set_shared_deps_src_replace_dir(Config, _DepsDir) ->
+    Config.
+
 get_lib_dir(App) ->
     %% Find App amongst the reachable lib directories
     %% Returns either the found path or a tagged tuple with a boolean
@@ -348,9 +365,14 @@ find_deps(Config, read=Mode, Deps) ->
     find_deps(Config, Mode, Deps, []).
 
 find_deps(Config, find, [], {Avail, Missing}) ->
-    {Config, {lists:reverse(Avail), lists:reverse(Missing)}};
+    DepsReplacementCfg = get_shared_deps_src_replace_dir(Config, []),
+    Avail2 = replace_deps_source(Avail, DepsReplacementCfg),
+    Missing2 = replace_deps_source(Missing, DepsReplacementCfg),
+    {Config, {lists:reverse(Avail2), lists:reverse(Missing2)}};
 find_deps(Config, read, [], Deps) ->
-    {Config, lists:reverse(Deps)};
+    DepsReplacementCfg = get_shared_deps_src_replace_dir(Config, []),
+    Deps2 = replace_deps_source(Deps, DepsReplacementCfg),
+    {Config, lists:reverse(Deps2)};
 find_deps(Config, Mode, [App | Rest], Acc) when is_atom(App) ->
     find_deps(Config, Mode, [{App, ".*", undefined} | Rest], Acc);
 find_deps(Config, Mode, [{App, VsnRegex} | Rest], Acc) when is_atom(App) ->
@@ -818,3 +840,49 @@ format_source(App, {_, Url, Rev}) ->
     ?FMT("~p REV ~s ~s", [App, Rev, Url]);
 format_source(App, undefined) ->
     ?FMT("~p", [App]).
+
+replace_deps_source(Deps, ReplacementCfg) ->
+  replace_deps_source([], Deps, ReplacementCfg).
+
+replace_deps_source(NewDeps, [], _) ->
+  lists:reverse(NewDeps);
+replace_deps_source(NewDeps, [Dep | DepsRest], ReplacementCfg) ->
+  NewDep = update_dep_source(Dep, ReplacementCfg),
+  replace_deps_source([NewDep | NewDeps], DepsRest, ReplacementCfg).
+
+update_dep_source(Dep = #dep{source = DepSource}, ReplacementCfg) ->
+  DepSourceList = tuple_to_list(DepSource),
+  NewDepSourceList = replace_dep_source(DepSourceList, ReplacementCfg),
+  NewDepSource = list_to_tuple(NewDepSourceList),
+  Dep#dep{source = NewDepSource}.
+
+replace_dep_source(DepSource, []) ->
+  DepSource;
+replace_dep_source([DepSrcType, DepSrcStr | DepSrcRestParam] = DepSrc, [{{DepSrcType, DepSrcStrRegex}, ReplacementInfo} | ReplacementCfgRest]) ->
+  case re:run(DepSrcStr, DepSrcStrRegex) of
+    {match, [_ | ReplaceIndexes]} ->
+      {NewDepSrcType, ReplacementSubstrings} = 
+      case ReplacementInfo of
+        {_, _} -> ReplacementInfo;
+        ReplacementInfo when is_list(ReplacementInfo) -> {DepSrcType, ReplacementInfo}
+      end,
+      NewDepSrcString = replace_substrings(DepSrcStr, ReplaceIndexes, ReplacementSubstrings),
+      [NewDepSrcType, NewDepSrcString | DepSrcRestParam];
+    _ ->
+      replace_dep_source(DepSrc, ReplacementCfgRest)
+  end;
+replace_dep_source(DepSrc, [_ | ReplacementCfgRest]) ->
+  replace_dep_source(DepSrc, ReplacementCfgRest).
+
+replace_substrings(InitialString, ReplaceIndexes, ReplaceSubstrings) ->
+  replace_substrings("", InitialString, ReplaceIndexes, ReplaceSubstrings, 0).
+
+replace_substrings(StringResult, StringRemain, [], [], _) ->
+  StringResult ++ StringRemain;
+replace_substrings(StringResult, StringRemain, [{ReplaceStartIndex, ReplaceLength} | ReplaceIndexesRest], [ReplaceSubstring | ReplaceSubstringsRest], CurrentIndex) ->
+  ReplaceIndexInRemain = ReplaceStartIndex-CurrentIndex,
+  SubstringBeforeReplace = lists:sublist(StringRemain, 1, ReplaceStartIndex-CurrentIndex),
+  NewSres = StringResult ++ SubstringBeforeReplace ++ ReplaceSubstring,
+  NewSrem = lists:sublist(StringRemain, ReplaceIndexInRemain+ReplaceLength+1, length(StringRemain)),
+  NewP = CurrentIndex + ReplaceLength + length(SubstringBeforeReplace),
+  replace_substrings(NewSres, NewSrem, ReplaceIndexesRest, ReplaceSubstringsRest, NewP).
