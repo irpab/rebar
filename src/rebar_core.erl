@@ -76,6 +76,7 @@ process_commands([], ParentConfig) ->
             ok
     end;
 process_commands([Command | Rest], ParentConfig) ->
+  io:format(">>>>>>>>>>>> pab: process_commands Command = ~p~n", [Command]),
     %% Reset skip dirs
     ParentConfig1 = rebar_config:reset_skip_dirs(ParentConfig),
     Operations = get_operations(ParentConfig1),
@@ -118,6 +119,8 @@ process_commands([Command | Rest], ParentConfig) ->
     process_commands(Rest, ParentConfig4).
 
 process_dir(Dir, Command, ParentConfig, DirSet) ->
+  io:format("~n~n~n~n", []),
+  io:format(">>>>>>>>>>>> pab: process_dir Command = ~p, Dir = ~p~n", [Command, Dir]),
     case filelib:is_dir(Dir) of
         false ->
             ?WARN("Skipping non-existent sub-dir: ~p\n", [Dir]),
@@ -326,8 +329,10 @@ maybe_load_local_config(Dir, ParentConfig) ->
     %% config when we are dealing with base_dir.
     case rebar_utils:processing_base_dir(ParentConfig, Dir) of
         true ->
+            io:format(">>>>>>>>>>>> pab: maybe_load_local_config true~n", []),
             ParentConfig;
         false ->
+            io:format(">>>>>>>>>>>> pab: maybe_load_local_config false; is_list(ParentConfig)=~p~n", [is_list(ParentConfig)]),
             rebar_config:new(ParentConfig)
     end.
 
@@ -340,6 +345,7 @@ process_each([], _Command, Config, DirSet, _File) ->
     Config1 = rebar_config:reset_envs(Config),
     {Config1, DirSet};
 process_each([Dir | Rest], Command, Config, DirSet, File) ->
+  io:format(">>>>>>>>>>>> pab: process_each (~p) Dir = ~p  Rest = ~p  File = ~p~n", [Command, Dir, Rest, File]),
     case sets:is_element(Dir, DirSet) of
         true ->
             ?DEBUG("Skipping ~s; already processed!\n", [Dir]),

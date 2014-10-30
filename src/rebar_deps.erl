@@ -175,6 +175,7 @@ do_check_deps(Config) ->
 'get-deps'(Config, _) ->
     %% Determine what deps are available and missing
     Deps = rebar_config:get_local(Config, deps, []),
+    io:format(">>>>>>>>>>>> pab: Deps = ~p~n", [Deps]),
     {Config1, {_AvailableDeps, MissingDeps}} = find_deps(Config, find, Deps),
     MissingDeps1 = [D || D <- MissingDeps, D#dep.source =/= undefined],
 

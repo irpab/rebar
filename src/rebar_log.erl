@@ -68,7 +68,8 @@ log(Device, Level, Str, Args) ->
     end.
 
 error_level() -> ?ERROR_LEVEL.
-default_level() -> ?WARN_LEVEL.
+% default_level() -> ?WARN_LEVEL.
+default_level() -> ?ERROR_LEVEL.
 
 is_verbose(Config) ->
     rebar_config:get_xconf(Config, is_verbose, false).

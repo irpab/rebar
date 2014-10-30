@@ -195,7 +195,9 @@ new(ParentConfig, ConfName) ->
     %% Load terms from rebar.config, if it exists
     Dir = rebar_utils:get_cwd(),
     ConfigFile = filename:join([Dir, ConfName]),
+    io:format("~n>>>>>>>>>>>> pab: new/2 Dir = ~p  ParentConfig#config. = ~n~n", [Dir]),
     Opts0 = ParentConfig#config.opts,
+    % check if base dir contains global config script. use it, Luck
     Opts = case consult_file(ConfigFile) of
                {ok, Terms} ->
                    %% Found a config file with some terms. We need to
