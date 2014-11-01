@@ -191,15 +191,40 @@ clean_config(Old, New) ->
 %% Internal functions
 %% ===================================================================
 
+try_shared_config_script(Terms0, ParentConfig, CurrentConfigDir, CurrentConfigName) ->
+    BaseConfigName = get_global(ParentConfig, config, CurrentConfigName),
+
+    SharedScriptName0 = 
+    case filename:extension(BaseConfigName) of
+        ".script" ->
+            BaseConfigName;
+        _ ->
+            BaseConfigName ++ ".script"
+    end,
+    SharedScriptName = SharedScriptName0 ++ ".shared",
+    SharedScriptDir = get_xconf(ParentConfig, base_dir, CurrentConfigDir),
+    SharedScript = filename:join([SharedScriptDir, SharedScriptName]),
+
+    case file:script(SharedScript, bs([{'CONFIG', Terms0}, 
+                                       {'SCRIPT', SharedScript}])) of
+        {ok, Terms} ->
+            Terms;
+        {error, enoent} ->
+            Terms0;
+        Error ->
+            ?ABORT("Failed to load ~s: ~p\n", [SharedScript, Error])
+    end.
+
 new(ParentConfig, ConfName) ->
     %% Load terms from rebar.config, if it exists
     Dir = rebar_utils:get_cwd(),
     ConfigFile = filename:join([Dir, ConfName]),
-    io:format("~n>>>>>>>>>>>> pab: new/2 Dir = ~p  ParentConfig#config. = ~n~n", [Dir]),
+    
     Opts0 = ParentConfig#config.opts,
     % check if base dir contains global config script. use it, Luck
     Opts = case consult_file(ConfigFile) of
-               {ok, Terms} ->
+               {ok, Terms0} ->
+                   Terms = try_shared_config_script(Terms0, ParentConfig, Dir, ConfName),
                    %% Found a config file with some terms. We need to
                    %% be able to distinguish between local definitions
                    %% (i.e. from the file in the cwd) and inherited
